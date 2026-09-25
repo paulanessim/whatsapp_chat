@@ -135,10 +135,11 @@ def last_message(doc, method):
 
     contact_name = frappe.db.get_value("WhatsApp Contact", filters={"mobile_no": mobile_no})
     if contact_name:
+        frappe.db.set_value("WhatsApp Contact", contact_name, {
+            "last_message": doc.message,
+            "is_read": 0
+        })
         chat_doc = frappe.get_doc("WhatsApp Contact", contact_name)
-        chat_doc.last_message = doc.message
-        chat_doc.is_read = 0
-        chat_doc.save(ignore_permissions=True)
     else:
         chat_doc = frappe.get_doc({
             "doctype": "WhatsApp Contact",
@@ -149,7 +150,7 @@ def last_message(doc, method):
         })
         chat_doc.save(ignore_permissions=True)
 
-    if chat_doc.email and doc.type != 'Outgoing':
+    if doc.type != 'Outgoing':
         message_data = {
             "content": doc.message or doc.attach or '',
             "creation": frappe.utils.now(),
@@ -158,17 +159,22 @@ def last_message(doc, method):
             "sender_user_no": mobile_no,
             "user": "Guest"
         }
+        
+        publish_kwargs = {}
+        if chat_doc.email:
+            publish_kwargs['user'] = chat_doc.email
+            
         # Notify chat list
         frappe.publish_realtime(
             "latest_chat_updates",
             message_data,
-            user=chat_doc.email
+            **publish_kwargs
         )
         # Notify open chat room
         frappe.publish_realtime(
             chat_doc.name,
             message_data,
-            user=chat_doc.email
+            **publish_kwargs
         )
 
     return "ok"
